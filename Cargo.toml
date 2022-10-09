@@ -1,0 +1,17 @@
+[package]
+name = "string-utility"
+version = "0.1.0"
+edition = "2021"
+autoexamples = true
+rust-version = "1.64.0"
+description = "Provides simple substring implementation (with the RangeBound trait), keep string before or after a specified string, etc."
+readme = "README.md"
+homepage = "https://github.com/floating-floaties/string-utility/"
+repository = "https://github.com/floating-floaties/string-utility/"
+license = "GPL-3.0-only"
+keywords = ["substring", "range", "range bound", "keep before", "keep after"]
+exclude = ["Dockerfile", "target", "docker*", "*.lock", ".*"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
