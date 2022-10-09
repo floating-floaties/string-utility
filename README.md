@@ -11,6 +11,13 @@
       * [Keep before (excluding)](#keep-before--excluding-)
 <!-- TOC -->
 
+## Crate
+
+```toml
+[dependencies]
+string-utility = "0.1"
+```
+
 ## Usage
 
 ### Substring
