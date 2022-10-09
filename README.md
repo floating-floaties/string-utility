@@ -6,10 +6,10 @@
   * [Usage](#usage)
     * [Substring](#substring)
     * [Keep](#keep)
-      * [Keep after (including)](#keep-after--including-)
-      * [Keep after (excluding)](#keep-after--excluding-)
-      * [Keep before (including)](#keep-before--including-)
-      * [Keep before (excluding)](#keep-before--excluding-)
+      * [Keep after (including)](#keep-after--including-including)
+      * [Keep after (excluding)](#keep-after--excluding-excluding)
+      * [Keep before (including)](#keep-before--including-including)
+      * [Keep before (excluding)](#keep-before--excluding-excluding)
 <!-- TOC -->
 
 ## Install
