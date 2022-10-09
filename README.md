@@ -2,6 +2,7 @@
 
 <!-- TOC -->
 * [Simple Substring Trait](#simple-substring-trait)
+  * [Install](#install)
   * [Usage](#usage)
     * [Substring](#substring)
     * [Keep](#keep)
@@ -11,10 +12,10 @@
       * [Keep before (excluding)](#keep-before--excluding-)
 <!-- TOC -->
 
-## Crate
+## Install
 
+Add the following line to your Cargo.toml file (under `[dependencies]`):
 ```toml
-[dependencies]
 string-utility = "0.1"
 ```
 
