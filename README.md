@@ -6,27 +6,28 @@
   * [Usage](#usage)
     * [Substring](#substring)
     * [Keep](#keep)
-      * [Keep after (including)](#keep-after-including)
-      * [Keep after (excluding)](#keep-after-excluding)
-      * [Keep before (including)](#keep-before-including)
-      * [Keep before (excluding)](#keep-before-excluding)
 <!-- TOC -->
 
 ## Install
 
 Add the following line to your Cargo.toml file (under `[dependencies]`):
+
 ```toml
-string-utility = "0.1"
+string-utility = "0.2"
 ```
 
 ## Usage
 
-### Substring
-
-`String::substring(range: Range<usize>)`
+### Import all Traits
 
 ```rust
-use string_utility::Substring;
+use string_utility::prelude::*;
+```
+
+### Substring
+
+```rust
+use string_utility::prelude::*;
 
 fn main() {
     let some_text = "42Hello, world!".to_string();
@@ -66,83 +67,25 @@ fn main() {
 
 ### Keep
 
-#### Keep after (including)
+All functions: [trait def](https://docs.rs/string-utility/0.2.0/string_utility/trait.StringKeeperExt.html)
 
 ```rust
-use string_utility::{Substring, SubstringKeep};
+use string_utility::prelude::*;
 
 fn main() {
-  let some_text = "Password: mYsuperSecretPassword -- so secretive [gasp]".to_string();
-
-  // with string
-  let result = some_text.keep_after_include("-- ");
-  let expected = "-- so secretive [gasp]";
-  assert_eq!(result, expected);
-
-  // with chars
-  let result = some_text.keep_after_include('-');
-  let expected = "-- so secretive [gasp]";
-  assert_eq!(result, expected);
-}
-```
-
-#### Keep after (excluding)
-
-```rust
-use string_utility::{Substring, SubstringKeep};
-
-
-fn main() {
-  let some_text = "Password: mYsuperSecretPassword -- so secretive [gasp]".to_string();
-
-  // with string
-  let result = some_text.keep_after_exclude("-- ");
-  let expected = "so secretive [gasp]";
-  assert_eq!(result, expected);
-
-  // with chars
-  let result = some_text.keep_after_exclude('-');
-  let expected = "- so secretive [gasp]";
-  assert_eq!(result, expected);
-}
-```
-
-#### Keep before (including)
-
-```rust
-use string_utility::{Substring, SubstringKeep};
-
-fn main() {
-  let some_text = "Password: mYsuperSecretPassword -- so secretive [gasp]".to_string();
-
-  // with string
-  let result = some_text.keep_before_include("-- ");
-  let expected = "Password: mYsuperSecretPassword -- ";
-  assert_eq!(result, expected);
-
-  // with chars
-  let result = some_text.keep_before_include('-');
-  let expected = "Password: mYsuperSecretPassword -";
-  assert_eq!(result, expected);
-}
-```
-
-#### Keep before (excluding)
-
-```rust
-use string_utility::{Substring, SubstringKeep};
-
-
-fn main() {
-  let some_text = "Password: mYsuperSecretPassword -- so secretive [gasp]".to_string();
-
-  // with string
-  let result = some_text.keep_before_exclude("-- ");
-  let expected = "Password: mYsuperSecretPassword ";
-  assert_eq!(result, expected);
-
-  // with chars
-  let result = some_text.keep_before_exclude('-');
-  assert_eq!(result, expected);
+  let some_text = "some start value, some not-so-start value".to_string();
+  
+  let result = some_text
+          .keep("start".to_string())  // keep(pattern)
+          // from the
+          .end_of_string()
+          // whether to keep the pattern "start"
+          .excluding_pattern() 
+          // keep everything before the pattern
+          .before_pattern()
+          // exec
+          .to_string();
+    let expected = "some start value, some not-so-";
+    assert_eq!(result, expected);
 }
 ```

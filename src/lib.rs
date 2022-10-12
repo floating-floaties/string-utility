@@ -1,101 +1,215 @@
 #![doc = include_str ! ("./../README.md")]
 #![forbid(unsafe_code)]
 
-use std::collections::Bound;
-use std::ops::RangeBounds;
-
-pub trait Substring {
-    fn substring<R: RangeBounds<usize>>(&self, range: R) -> String;
-    fn try_substring<R: RangeBounds<usize>>(&self, range: R) -> Option<String>;
+pub mod prelude {
+    pub use crate::{
+        StringKeeperExt,
+        SubstringExt,
+        SubstringKeeperExt
+    };
 }
 
-pub trait SubstringKeep<S> {
-    fn keep_after_include(&self, pattern: S) -> String;
-    fn keep_after_exclude(&self, pattern: S) -> String;
-    fn keep_before_include(&self, pattern: S) -> String;
-    fn keep_before_exclude(&self, pattern: S) -> String;
+pub trait SubstringExt {
+    fn substring<R: std::ops::RangeBounds<usize>>(&self, range: R) -> String;
+    fn try_substring<R: std::ops::RangeBounds<usize>>(&self, range: R) -> Option<String>;
 }
 
-
-impl SubstringKeep<&str> for str {
-    fn keep_after_include(&self, pattern: &str) -> String {
-        match self.find(pattern) {
-            None => "".to_string(),
-            Some(pos) => self.substring(pos..)
-        }
-    }
-
-
-    fn keep_after_exclude(&self, pattern: &str) -> String {
-        match self.find(pattern) {
-            None => "".to_string(),
-            Some(pos) => self.substring(pos + pattern.chars().count()..)
-        }
-    }
-
-    fn keep_before_include(&self, pattern: &str) -> String {
-        match self.find(pattern) {
-            None => "".to_string(),
-            Some(pos) => self.substring(..pos + pattern.chars().count())
-        }
-    }
-
-    fn keep_before_exclude(&self, pattern: &str) -> String {
-        match self.find(pattern) {
-            None => "".to_string(),
-            Some(pos) => self.substring(..pos)
-        }
-    }
+pub trait StringKeeperExt<T> {
+    fn beginning_of_string(self) -> StringKeeper<T>;
+    fn end_of_string(self) -> StringKeeper<T>;
+    fn including_pattern(self) -> StringKeeper<T>;
+    fn excluding_pattern(self) -> StringKeeper<T>;
+    fn before_pattern(self) -> StringKeeper<T>;
+    fn after_pattern(self) -> StringKeeper<T>;
 }
 
-impl SubstringKeep<char> for str {
-    fn keep_after_include(&self, pattern: char) -> String {
-        match self.find(pattern) {
-            None => "".to_string(),
-            Some(pos) => self.substring(pos..)
-        }
-    }
+pub enum KeeperPeriod {
+    Start,
+    End,
+}
 
+pub enum KeeperCutoff {
+    After,
+    Before,
+}
 
-    fn keep_after_exclude(&self, pattern: char) -> String {
-        match self.find(pattern) {
-            None => "".to_string(),
-            Some(pos) => self.substring(pos.saturating_add(1)..)
-        }
-    }
+pub enum KeeperClusivity {
+    Including,
+    Excluding,
+}
 
-    fn keep_before_include(&self, pattern: char) -> String {
-        match self.find(pattern) {
-            None => "".to_string(),
-            Some(pos) => self.substring(..=pos)
-        }
-    }
+pub struct StringKeeper<T> {
+    pub to_parse: String,
+    pub pattern: T,
+    pub period: KeeperPeriod,
+    pub clusivity: KeeperClusivity,
+    pub cutoff: KeeperCutoff,
+}
+pub trait SubstringKeeperExt<T> {
+    fn keep(self, pattern: T) -> StringKeeper<T>;
+}
 
-    fn keep_before_exclude(&self, pattern: char) -> String {
-        match self.find(pattern) {
-            None => "".to_string(),
-            Some(pos) => self.substring(..pos)
+impl SubstringKeeperExt<String> for String {
+    fn keep(self, pattern: String) -> StringKeeper<String> {
+        StringKeeper {
+            to_parse: self,
+            period: KeeperPeriod::Start,
+            cutoff: KeeperCutoff::After,
+            clusivity: KeeperClusivity::Including,
+            pattern,
         }
     }
 }
 
+impl SubstringKeeperExt<char> for String {
+    fn keep(self, pattern: char) -> StringKeeper<char> {
+        StringKeeper {
+            to_parse: self,
+            period: KeeperPeriod::Start,
+            cutoff: KeeperCutoff::After,
+            clusivity: KeeperClusivity::Including,
+            pattern,
+        }
+    }
+}
 
-impl Substring for str {
-    fn substring<R: RangeBounds<usize>>(&self, range: R) -> String {
+impl StringKeeperExt<String> for StringKeeper<String> {
+    fn beginning_of_string(mut self) -> StringKeeper<String> {
+        self.period = KeeperPeriod::Start;
+        self
+    }
+
+    fn end_of_string(mut self) -> StringKeeper<String> {
+        self.period = KeeperPeriod::End;
+        self
+    }
+
+    fn including_pattern(mut self) -> StringKeeper<String> {
+        self.clusivity = KeeperClusivity::Including;
+        self
+    }
+
+    fn excluding_pattern(mut self) -> StringKeeper<String> {
+        self.clusivity = KeeperClusivity::Excluding;
+        self
+    }
+
+    fn before_pattern(mut self) -> StringKeeper<String> {
+        self.cutoff = KeeperCutoff::Before;
+        self
+    }
+
+    fn after_pattern(mut self) -> StringKeeper<String> {
+        self.cutoff = KeeperCutoff::After;
+        self
+    }
+}
+
+impl std::fmt::Display for StringKeeper<String> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let try_find = match self.period {
+            KeeperPeriod::Start => self.to_parse.find(&self.pattern),
+            KeeperPeriod::End => self.to_parse.rfind(&self.pattern),
+        };
+
+        let range = match try_find {
+            None => usize::MIN..usize::MIN,
+            Some(pos) => match self.clusivity {
+                KeeperClusivity::Including => match self.cutoff {
+                    KeeperCutoff::After => pos..usize::MAX,
+                    KeeperCutoff::Before => {
+                        let offset = pos + self.pattern.chars().count();
+                        usize::MIN..offset
+                    }
+                },
+                KeeperClusivity::Excluding => match self.cutoff {
+                    KeeperCutoff::After => {
+                        let offset = pos + self.pattern.chars().count();
+                        offset..usize::MAX
+                    }
+                    KeeperCutoff::Before => usize::MIN..pos,
+                },
+            },
+        };
+
+        write!(f, "{}", self.to_parse.substring(range))
+    }
+}
+
+impl StringKeeperExt<char> for StringKeeper<char> {
+    fn beginning_of_string(mut self) -> Self {
+        self.period = KeeperPeriod::Start;
+        self
+    }
+
+    fn end_of_string(mut self) -> Self {
+        self.period = KeeperPeriod::End;
+        self
+    }
+
+    fn including_pattern(mut self) -> Self {
+        self.clusivity = KeeperClusivity::Including;
+        self
+    }
+
+    fn excluding_pattern(mut self) -> Self {
+        self.clusivity = KeeperClusivity::Excluding;
+        self
+    }
+
+    fn before_pattern(mut self) -> Self {
+        self.cutoff = KeeperCutoff::Before;
+        self
+    }
+
+    fn after_pattern(mut self) -> Self {
+        self.cutoff = KeeperCutoff::After;
+        self
+    }
+
+}
+
+impl std::fmt::Display for StringKeeper<char> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let try_find = match self.period {
+            KeeperPeriod::Start => self.to_parse.find(self.pattern),
+            KeeperPeriod::End => self.to_parse.rfind(self.pattern),
+        };
+
+        let range = match try_find {
+            None => usize::MIN..usize::MIN,
+            Some(pos) => match self.clusivity {
+                KeeperClusivity::Including => match self.cutoff {
+                    KeeperCutoff::After => pos..usize::MAX,
+                    KeeperCutoff::Before => usize::MIN..(pos).saturating_add(1),
+                },
+                KeeperClusivity::Excluding => match self.cutoff {
+                    KeeperCutoff::After => (pos).saturating_add(1)..usize::MAX,
+                    KeeperCutoff::Before => usize::MIN..pos,
+                },
+            },
+        };
+
+        write!(f, "{}", self.to_parse.substring(range))
+    }
+}
+
+impl SubstringExt for str {
+    fn substring<R: std::ops::RangeBounds<usize>>(&self, range: R) -> String {
         self.try_substring(range).unwrap_or_else(|| "".to_string())
     }
 
-    fn try_substring<R: RangeBounds<usize>>(&self, range: R) -> Option<String> {
+    fn try_substring<R: std::ops::RangeBounds<usize>>(&self, range: R) -> Option<String> {
         let start_idx = match range.start_bound() {
-            Bound::Included(v) => *v,
-            Bound::Excluded(v) => v.saturating_add(1),
-            Bound::Unbounded => usize::MIN,
+            std::collections::Bound::Included(v) => *v,
+            std::collections::Bound::Excluded(v) => v.saturating_add(1),
+            std::collections::Bound::Unbounded => usize::MIN,
         };
 
         let end_idx = match range.end_bound() {
-            Bound::Included(v) => v.saturating_add(1),
-            Bound::Excluded(v) => *v,
-            Bound::Unbounded => usize::MAX,
+            std::collections::Bound::Included(v) => v.saturating_add(1),
+            std::collections::Bound::Excluded(v) => *v,
+            std::collections::Bound::Unbounded => usize::MAX,
         };
 
         if end_idx <= start_idx {
@@ -104,19 +218,13 @@ impl Substring for str {
 
         end_idx
             .checked_sub(start_idx)
-            .map(|take_count| {
-                self
-                    .chars()
-                    .skip(start_idx)
-                    .take(take_count)
-                    .collect()
-            })
+            .map(|take_count| self.chars().skip(start_idx).take(take_count).collect())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::prelude::*;
 
     #[test]
     fn try_substring() {
@@ -138,11 +246,9 @@ mod tests {
         let expected = "Hello";
         assert_eq!(result, expected);
 
-
         let result = some_text.substring(2..424242);
         let expected = "Hello, world!";
         assert_eq!(result, expected);
-
     }
 
     #[test]
@@ -163,7 +269,7 @@ mod tests {
 
     #[test]
     fn test_multiple_byte_characters() {
-        assert_eq!("ã".substring(..1), "a");  // As opposed to "ã".
+        assert_eq!("ã".substring(..1), "a"); // As opposed to "ã".
         assert_eq!("ã".substring(1..2), "\u{0303}");
         assert_eq!("fõøbα®".substring(2..5), "øbα");
     }
@@ -187,49 +293,185 @@ mod tests {
 
     #[test]
     fn test_keep_after_include_string() {
-        assert_eq!("this is karøbα it was".keep_after_include("karøbα"), "karøbα it was");
-        assert_eq!("karøbα".keep_after_include("kar"), "karøbα");
+        assert_eq!(
+            "this is karøbα it was"
+                .to_string()
+                .keep("karøbα".to_string())
+                .beginning_of_string() // default
+                .after_pattern() // default
+                .including_pattern() // default
+                .to_string(),
+            "karøbα it was"
+        );
+        assert_eq!(
+            "this is karøbα it was"
+                .to_string()
+                .keep("karøbα".to_string())
+                .to_string(),
+            "karøbα it was"
+        );
+        assert_eq!(
+            "karøbα"
+                .to_string()
+                .keep("kar".to_string())
+                .after_pattern()
+                .including_pattern()
+                .to_string(),
+            "karøbα"
+        );
     }
 
     #[test]
     fn test_keep_after_exclude_string() {
-        assert_eq!("this is karøbα it was".keep_after_exclude("karøbα"), " it was");
-        assert_eq!("karøbα".keep_after_exclude("kar"), "øbα");
+        assert_eq!(
+            "this is karøbα it was"
+                .to_string()
+                .keep("karøbα".to_string())
+                .beginning_of_string()
+                .after_pattern()
+                .excluding_pattern()
+                .to_string(),
+            " it was"
+        );
+        assert_eq!(
+            "karøbα"
+                .to_string()
+                .keep("kar".to_string())
+                .after_pattern()
+                .excluding_pattern()
+                .to_string(),
+            "øbα"
+        );
     }
 
     #[test]
     fn test_keep_after_include_char() {
-        assert_eq!("this is karøbα it was".keep_after_include('k'), "karøbα it was");
-        assert_eq!("karøbα".keep_after_include('k'), "karøbα");
+        assert_eq!(
+            "this is karøbα it was"
+                .to_string()
+                .keep('k')
+                .after_pattern()
+                .including_pattern()
+                .to_string(),
+            "karøbα it was"
+        );
+        assert_eq!(
+            "karøbα"
+                .to_string()
+                .keep('k')
+                .after_pattern()
+                .including_pattern()
+                .to_string(),
+            "karøbα"
+        );
     }
 
     #[test]
     fn test_keep_after_exclude_char() {
-        assert_eq!("this is karøbα it was".keep_after_exclude('k'), "arøbα it was");
-        assert_eq!("karøbα".keep_after_exclude('k'), "arøbα");
+        assert_eq!(
+            "this is karøbα it was"
+                .to_string()
+                .keep('k')
+                .after_pattern()
+                .excluding_pattern()
+                .to_string(),
+            "arøbα it was"
+        );
+        assert_eq!(
+            "karøbα"
+                .to_string()
+                .keep('k')
+                .after_pattern()
+                .excluding_pattern()
+                .to_string(),
+            "arøbα"
+        );
     }
 
     #[test]
     fn test_keep_before_include_string() {
-        assert_eq!("this is karøbα it was".keep_before_include("øbα"), "this is karøbα");
-        assert_eq!("karøbα".keep_before_include("øbα"), "karøbα");
+        assert_eq!(
+            "this is karøbα it was"
+                .to_string()
+                .keep("øbα".to_string())
+                .before_pattern()
+                .including_pattern()
+                .to_string(),
+            "this is karøbα"
+        );
+        assert_eq!(
+            "karøbα"
+                .to_string()
+                .keep("øbα".to_string())
+                .before_pattern()
+                .including_pattern()
+                .to_string(),
+            "karøbα"
+        );
     }
     #[test]
     fn test_keep_before_include_char() {
-        assert_eq!("this is karøbα it was".keep_before_include('ø'), "this is karø");
-        assert_eq!("karøbα".keep_before_include('ø'), "karø");
+        assert_eq!(
+            "this is karøbα it was"
+                .to_string()
+                .keep('ø')
+                .before_pattern()
+                .including_pattern()
+                .to_string(),
+            "this is karø"
+        );
+        assert_eq!(
+            "karøbα"
+                .to_string()
+                .keep('ø')
+                .before_pattern()
+                .including_pattern()
+                .to_string(),
+            "karø"
+        );
     }
-
 
     #[test]
     fn test_keep_before_exclude_string() {
-        assert_eq!("this is karøbα it was".keep_before_exclude("øbα"), "this is kar");
-        assert_eq!("karøbα".keep_before_exclude("øbα"), "kar");
+        assert_eq!(
+            "this is karøbα it was"
+                .to_string()
+                .keep("øbα".to_string())
+                .before_pattern()
+                .excluding_pattern()
+                .to_string(),
+            "this is kar"
+        );
+        assert_eq!(
+            "karøbα"
+                .to_string()
+                .keep("øbα".to_string())
+                .before_pattern()
+                .excluding_pattern()
+                .to_string(),
+            "kar"
+        );
     }
 
     #[test]
     fn test_keep_before_exclude_char() {
-        assert_eq!("this is karøbα it was".keep_before_exclude('ø'), "this is kar");
-        assert_eq!("karøbα".keep_before_exclude('ø'), "kar");
+        assert_eq!(
+            "this is karøbα it was"
+                .to_string()
+                .keep('ø')
+                .before_pattern()
+                .excluding_pattern()
+                .to_string(),
+            "this is kar"
+        );
+        assert_eq!(
+            "karøbα"
+                .to_string()
+                .keep('ø')
+                .before_pattern()
+                .excluding_pattern()
+                .to_string(),
+            "kar"
+        );
     }
 }
