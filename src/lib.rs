@@ -11,6 +11,7 @@ pub mod prelude {
 
 pub trait SubstringExt {
     fn substring<R: std::ops::RangeBounds<usize>>(&self, range: R) -> String;
+    fn substring_len(&self, reverse_count: usize) -> String;
     fn try_substring<R: std::ops::RangeBounds<usize>>(&self, range: R) -> Option<String>;
 }
 
@@ -25,6 +26,15 @@ pub trait KeeperCommonExt<T, P> {
     fn excluding_pattern(self) -> StringKeeper<T, P>;
     fn before_pattern(self) -> StringKeeper<T, P>;
     fn after_pattern(self) -> StringKeeper<T, P>;
+
+    #[cfg(feature = "regex")]
+    fn utf8_encoding(self) -> StringKeeper<T, P>;
+
+    #[cfg(feature = "regex")]
+    fn utf16_encoding(self) -> StringKeeper<T, P>;
+
+    #[cfg(feature = "regex")]
+    fn set_encoding(self, enc: KeeperEncoding) -> StringKeeper<T, P>;
 }
 
 pub trait StringKeeperExt<T, P>: StringKeeperCommonExt<T, P> {}
@@ -44,12 +54,19 @@ pub enum KeeperClusivity {
     Excluding,
 }
 
+pub enum KeeperEncoding {
+    Utf8,
+    Utf16,
+    // Other(fn(original_text: &str, matched_text: &str, last_char: char) -> usize),
+}
+
 pub struct StringKeeper<T, P> {
     to_parse: P,
     pattern: T,
     period: KeeperPeriod,
     clusivity: KeeperClusivity,
     cutoff: KeeperCutoff,
+    encoding: KeeperEncoding,
 }
 
 impl<T, P> StringKeeperCommonExt<T, P> for P {
@@ -59,6 +76,7 @@ impl<T, P> StringKeeperCommonExt<T, P> for P {
             period: KeeperPeriod::Start,
             cutoff: KeeperCutoff::After,
             clusivity: KeeperClusivity::Including,
+            encoding: KeeperEncoding::Utf8,
             pattern,
         }
     }
@@ -92,6 +110,24 @@ impl<T, P> KeeperCommonExt<T, P> for StringKeeper<T, P> {
 
     fn after_pattern(mut self) -> StringKeeper<T, P> {
         self.cutoff = KeeperCutoff::After;
+        self
+    }
+
+    #[cfg(feature = "regex")]
+    fn utf8_encoding(mut self) -> StringKeeper<T, P> {
+        self.encoding = KeeperEncoding::Utf8;
+        self
+    }
+
+    #[cfg(feature = "regex")]
+    fn utf16_encoding(mut self) -> StringKeeper<T, P> {
+        self.encoding = KeeperEncoding::Utf16;
+        self
+    }
+
+    #[cfg(feature = "regex")]
+    fn set_encoding(mut self, enc: KeeperEncoding) -> StringKeeper<T, P> {
+        self.encoding = enc;
         self
     }
 }
@@ -159,10 +195,10 @@ impl std::fmt::Display for StringKeeper<regex::Regex, String> {
         let try_find = match self.period {
             KeeperPeriod::Start => {
                 self.pattern.find(to_parse)
-            },
+            }
             KeeperPeriod::End => {
                 self.pattern.find_iter(to_parse).last()
-            },
+            }
         };
 
         let range = match try_find {
@@ -171,23 +207,34 @@ impl std::fmt::Display for StringKeeper<regex::Regex, String> {
                 KeeperClusivity::Including => match self.cutoff {
                     KeeperCutoff::After => pos.start()..usize::MAX,
                     KeeperCutoff::Before => {
-                        // TODO: do this better
-                        let char_len = pos
-                            .as_str()
+                        let matched_string = pos.as_str();
+                        let char_len = matched_string
                             .chars()
                             .last()
-                            .map(char::len_utf8)
+                            .map(|last_char| {
+                                match self.encoding {
+                                    KeeperEncoding::Utf8 => char::len_utf8(last_char),
+                                    KeeperEncoding::Utf16 => char::len_utf16(last_char),
+                                    // KeeperEncoding::Other(len_of_char) => {
+                                    //     len_of_char(
+                                    //         &*self.to_parse,
+                                    //         matched_string,
+                                    //         last_char,
+                                    //     )
+                                    // }
+                                }
+                            })
                             .unwrap_or(std::mem::size_of::<char>());
                         let end = pos.end().saturating_sub(char_len);
                         usize::MIN..end
-                    },
+                    }
                 },
                 KeeperClusivity::Excluding => match self.cutoff {
                     KeeperCutoff::After => {
                         let offset = pos.as_str().chars().count();
                         let start = pos.start() + offset;
                         start..usize::MAX
-                    },
+                    }
                     KeeperCutoff::Before => usize::MIN..pos.start(),
                 },
             },
@@ -200,6 +247,10 @@ impl std::fmt::Display for StringKeeper<regex::Regex, String> {
 impl SubstringExt for str {
     fn substring<R: std::ops::RangeBounds<usize>>(&self, range: R) -> String {
         self.try_substring(range).unwrap_or_else(|| "".to_string())
+    }
+
+    fn substring_len(&self, reverse_count: usize) -> String {
+        self.substring(self.len().saturating_sub(reverse_count)..)
     }
 
     fn try_substring<R: std::ops::RangeBounds<usize>>(&self, range: R) -> Option<String> {
@@ -215,13 +266,19 @@ impl SubstringExt for str {
             std::collections::Bound::Unbounded => usize::MAX,
         };
 
-        if end_idx <= start_idx {
-            return Some("".to_string());
+        if end_idx > start_idx {
+            end_idx
+                .checked_sub(start_idx)
+                .map(|take_count| {
+                    self
+                        .chars()
+                        .skip(start_idx)
+                        .take(take_count)
+                        .collect()
+                })
+        } else {
+            None
         }
-
-        end_idx
-            .checked_sub(start_idx)
-            .map(|take_count| self.chars().skip(start_idx).take(take_count).collect())
     }
 }
 
@@ -289,6 +346,8 @@ mod tests {
         assert_eq!(any_string.substring(..10), "Mozilla");
         assert_eq!(any_string.substring(any_string.len() - 4..), "illa");
         assert_eq!(any_string.substring(any_string.len() - 5..), "zilla");
+        assert_eq!(any_string.substring_len(4), "illa");
+        assert_eq!(any_string.substring_len(5), "zilla");
         assert_eq!(any_string.substring(2..5), "zil");
         assert_eq!(any_string.substring(..2), "Mo");
         assert_eq!(any_string.substring(..), "Mozilla");
@@ -412,6 +471,7 @@ mod tests {
             "karøbα"
         );
     }
+
     #[test]
     fn test_keep_before_include_char() {
         assert_eq!(

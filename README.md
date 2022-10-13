@@ -61,6 +61,11 @@ fn main() {
     let result = some_text.substring(some_text.len()-1..);
     let expected = "!";
     assert_eq!(result, expected);
+
+  // get last char
+  let result = some_text.substring_len(1); // same as (len - 1)..usize::MAX
+  let expected = "!";
+  assert_eq!(result, expected);
 }
 ```
 
