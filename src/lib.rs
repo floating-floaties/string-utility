@@ -3,9 +3,9 @@
 
 pub mod prelude {
     pub use crate::{
-        StringKeeperExt,
         SubstringExt,
-        SubstringKeeperExt
+        StringKeeperCommonExt,
+        KeeperCommonExt,
     };
 }
 
@@ -14,18 +14,20 @@ pub trait SubstringExt {
     fn try_substring<R: std::ops::RangeBounds<usize>>(&self, range: R) -> Option<String>;
 }
 
-pub trait SubstringKeeperExt<T> {
-    fn keep(self, pattern: T) -> StringKeeper<T>;
+pub trait StringKeeperCommonExt<T, P> {
+    fn keep(self, pattern: T) -> StringKeeper<T, P>;
 }
 
-pub trait StringKeeperExt<T> {
-    fn beginning_of_string(self) -> StringKeeper<T>;
-    fn end_of_string(self) -> StringKeeper<T>;
-    fn including_pattern(self) -> StringKeeper<T>;
-    fn excluding_pattern(self) -> StringKeeper<T>;
-    fn before_pattern(self) -> StringKeeper<T>;
-    fn after_pattern(self) -> StringKeeper<T>;
+pub trait KeeperCommonExt<T, P> {
+    fn beginning_of_string(self) -> StringKeeper<T, P>;
+    fn end_of_string(self) -> StringKeeper<T, P>;
+    fn including_pattern(self) -> StringKeeper<T, P>;
+    fn excluding_pattern(self) -> StringKeeper<T, P>;
+    fn before_pattern(self) -> StringKeeper<T, P>;
+    fn after_pattern(self) -> StringKeeper<T, P>;
 }
+
+pub trait StringKeeperExt<T, P>: StringKeeperCommonExt<T, P> {}
 
 pub enum KeeperPeriod {
     Start,
@@ -42,17 +44,16 @@ pub enum KeeperClusivity {
     Excluding,
 }
 
-pub struct StringKeeper<T> {
-    to_parse: String,
+pub struct StringKeeper<T, P> {
+    to_parse: P,
     pattern: T,
     period: KeeperPeriod,
     clusivity: KeeperClusivity,
     cutoff: KeeperCutoff,
 }
 
-#[cfg(feature = "regex")]
-impl SubstringKeeperExt<regex::Regex> for String {
-    fn keep(self, pattern: regex::Regex) -> StringKeeper<regex::Regex> {
+impl<T, P> StringKeeperCommonExt<T, P> for P {
+    fn keep(self, pattern: T) -> StringKeeper<T, P> {
         StringKeeper {
             to_parse: self,
             period: KeeperPeriod::Start,
@@ -63,63 +64,39 @@ impl SubstringKeeperExt<regex::Regex> for String {
     }
 }
 
-impl SubstringKeeperExt<String> for String {
-    fn keep(self, pattern: String) -> StringKeeper<String> {
-        StringKeeper {
-            to_parse: self,
-            period: KeeperPeriod::Start,
-            cutoff: KeeperCutoff::After,
-            clusivity: KeeperClusivity::Including,
-            pattern,
-        }
-    }
-}
-
-impl SubstringKeeperExt<char> for String {
-    fn keep(self, pattern: char) -> StringKeeper<char> {
-        StringKeeper {
-            to_parse: self,
-            period: KeeperPeriod::Start,
-            cutoff: KeeperCutoff::After,
-            clusivity: KeeperClusivity::Including,
-            pattern,
-        }
-    }
-}
-
-impl StringKeeperExt<String> for StringKeeper<String> {
-    fn beginning_of_string(mut self) -> StringKeeper<String> {
+impl<T, P> KeeperCommonExt<T, P> for StringKeeper<T, P> {
+    fn beginning_of_string(mut self) -> StringKeeper<T, P> {
         self.period = KeeperPeriod::Start;
         self
     }
 
-    fn end_of_string(mut self) -> StringKeeper<String> {
+    fn end_of_string(mut self) -> StringKeeper<T, P> {
         self.period = KeeperPeriod::End;
         self
     }
 
-    fn including_pattern(mut self) -> StringKeeper<String> {
+    fn including_pattern(mut self) -> StringKeeper<T, P> {
         self.clusivity = KeeperClusivity::Including;
         self
     }
 
-    fn excluding_pattern(mut self) -> StringKeeper<String> {
+    fn excluding_pattern(mut self) -> StringKeeper<T, P> {
         self.clusivity = KeeperClusivity::Excluding;
         self
     }
 
-    fn before_pattern(mut self) -> StringKeeper<String> {
+    fn before_pattern(mut self) -> StringKeeper<T, P> {
         self.cutoff = KeeperCutoff::Before;
         self
     }
 
-    fn after_pattern(mut self) -> StringKeeper<String> {
+    fn after_pattern(mut self) -> StringKeeper<T, P> {
         self.cutoff = KeeperCutoff::After;
         self
     }
 }
 
-impl std::fmt::Display for StringKeeper<String> {
+impl std::fmt::Display for StringKeeper<String, String> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let try_find = match self.period {
             KeeperPeriod::Start => self.to_parse.find(&self.pattern),
@@ -150,40 +127,7 @@ impl std::fmt::Display for StringKeeper<String> {
     }
 }
 
-impl StringKeeperExt<char> for StringKeeper<char> {
-    fn beginning_of_string(mut self) -> Self {
-        self.period = KeeperPeriod::Start;
-        self
-    }
-
-    fn end_of_string(mut self) -> Self {
-        self.period = KeeperPeriod::End;
-        self
-    }
-
-    fn including_pattern(mut self) -> Self {
-        self.clusivity = KeeperClusivity::Including;
-        self
-    }
-
-    fn excluding_pattern(mut self) -> Self {
-        self.clusivity = KeeperClusivity::Excluding;
-        self
-    }
-
-    fn before_pattern(mut self) -> Self {
-        self.cutoff = KeeperCutoff::Before;
-        self
-    }
-
-    fn after_pattern(mut self) -> Self {
-        self.cutoff = KeeperCutoff::After;
-        self
-    }
-
-}
-
-impl std::fmt::Display for StringKeeper<char> {
+impl std::fmt::Display for StringKeeper<char, String> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let try_find = match self.period {
             KeeperPeriod::Start => self.to_parse.find(self.pattern),
@@ -209,43 +153,9 @@ impl std::fmt::Display for StringKeeper<char> {
 }
 
 #[cfg(feature = "regex")]
-impl StringKeeperExt<regex::Regex> for StringKeeper<regex::Regex> {
-    fn beginning_of_string(mut self) -> StringKeeper<regex::Regex> {
-        self.period = KeeperPeriod::Start;
-        self
-    }
-
-    fn end_of_string(mut self) -> StringKeeper<regex::Regex> {
-        self.period = KeeperPeriod::End;
-        self
-    }
-
-    fn including_pattern(mut self) -> StringKeeper<regex::Regex> {
-        self.clusivity = KeeperClusivity::Including;
-        self
-    }
-
-    fn excluding_pattern(mut self) -> StringKeeper<regex::Regex> {
-        self.clusivity = KeeperClusivity::Excluding;
-        self
-    }
-
-    fn before_pattern(mut self) -> StringKeeper<regex::Regex> {
-        self.cutoff = KeeperCutoff::Before;
-        self
-    }
-
-    fn after_pattern(mut self) -> StringKeeper<regex::Regex> {
-        self.cutoff = KeeperCutoff::After;
-        self
-    }
-}
-
-#[cfg(feature = "regex")]
-impl std::fmt::Display for StringKeeper<regex::Regex> {
+impl std::fmt::Display for StringKeeper<regex::Regex, String> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let cloned_to_parse = self.to_parse.clone();
-        let to_parse = cloned_to_parse.as_str();
+        let to_parse = self.to_parse.as_str();
         let try_find = match self.period {
             KeeperPeriod::Start => {
                 self.pattern.find(to_parse)
@@ -261,8 +171,14 @@ impl std::fmt::Display for StringKeeper<regex::Regex> {
                 KeeperClusivity::Including => match self.cutoff {
                     KeeperCutoff::After => pos.start()..usize::MAX,
                     KeeperCutoff::Before => {
-                        let offset = pos.as_str().chars().last().map(char::len_utf8).unwrap_or(2);
-                        let end = pos.end().saturating_sub(offset);
+                        // TODO: do this better
+                        let char_len = pos
+                            .as_str()
+                            .chars()
+                            .last()
+                            .map(char::len_utf8)
+                            .unwrap_or(std::mem::size_of::<char>());
+                        let end = pos.end().saturating_sub(char_len);
                         usize::MIN..end
                     },
                 },
