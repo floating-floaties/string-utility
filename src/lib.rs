@@ -14,6 +14,10 @@ pub trait SubstringExt {
     fn try_substring<R: std::ops::RangeBounds<usize>>(&self, range: R) -> Option<String>;
 }
 
+pub trait SubstringKeeperExt<T> {
+    fn keep(self, pattern: T) -> StringKeeper<T>;
+}
+
 pub trait StringKeeperExt<T> {
     fn beginning_of_string(self) -> StringKeeper<T>;
     fn end_of_string(self) -> StringKeeper<T>;
@@ -39,14 +43,24 @@ pub enum KeeperClusivity {
 }
 
 pub struct StringKeeper<T> {
-    pub to_parse: String,
-    pub pattern: T,
-    pub period: KeeperPeriod,
-    pub clusivity: KeeperClusivity,
-    pub cutoff: KeeperCutoff,
+    to_parse: String,
+    pattern: T,
+    period: KeeperPeriod,
+    clusivity: KeeperClusivity,
+    cutoff: KeeperCutoff,
 }
-pub trait SubstringKeeperExt<T> {
-    fn keep(self, pattern: T) -> StringKeeper<T>;
+
+#[cfg(feature = "regex")]
+impl SubstringKeeperExt<regex::Regex> for String {
+    fn keep(self, pattern: regex::Regex) -> StringKeeper<regex::Regex> {
+        StringKeeper {
+            to_parse: self,
+            period: KeeperPeriod::Start,
+            cutoff: KeeperCutoff::After,
+            clusivity: KeeperClusivity::Including,
+            pattern,
+        }
+    }
 }
 
 impl SubstringKeeperExt<String> for String {
@@ -186,6 +200,79 @@ impl std::fmt::Display for StringKeeper<char> {
                 KeeperClusivity::Excluding => match self.cutoff {
                     KeeperCutoff::After => (pos).saturating_add(1)..usize::MAX,
                     KeeperCutoff::Before => usize::MIN..pos,
+                },
+            },
+        };
+
+        write!(f, "{}", self.to_parse.substring(range))
+    }
+}
+
+#[cfg(feature = "regex")]
+impl StringKeeperExt<regex::Regex> for StringKeeper<regex::Regex> {
+    fn beginning_of_string(mut self) -> StringKeeper<regex::Regex> {
+        self.period = KeeperPeriod::Start;
+        self
+    }
+
+    fn end_of_string(mut self) -> StringKeeper<regex::Regex> {
+        self.period = KeeperPeriod::End;
+        self
+    }
+
+    fn including_pattern(mut self) -> StringKeeper<regex::Regex> {
+        self.clusivity = KeeperClusivity::Including;
+        self
+    }
+
+    fn excluding_pattern(mut self) -> StringKeeper<regex::Regex> {
+        self.clusivity = KeeperClusivity::Excluding;
+        self
+    }
+
+    fn before_pattern(mut self) -> StringKeeper<regex::Regex> {
+        self.cutoff = KeeperCutoff::Before;
+        self
+    }
+
+    fn after_pattern(mut self) -> StringKeeper<regex::Regex> {
+        self.cutoff = KeeperCutoff::After;
+        self
+    }
+}
+
+#[cfg(feature = "regex")]
+impl std::fmt::Display for StringKeeper<regex::Regex> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let cloned_to_parse = self.to_parse.clone();
+        let to_parse = cloned_to_parse.as_str();
+        let try_find = match self.period {
+            KeeperPeriod::Start => {
+                self.pattern.find(to_parse)
+            },
+            KeeperPeriod::End => {
+                self.pattern.find_iter(to_parse).last()
+            },
+        };
+
+        let range = match try_find {
+            None => usize::MIN..usize::MIN,
+            Some(pos) => match self.clusivity {
+                KeeperClusivity::Including => match self.cutoff {
+                    KeeperCutoff::After => pos.start()..usize::MAX,
+                    KeeperCutoff::Before => {
+                        let offset = pos.as_str().chars().last().map(char::len_utf8).unwrap_or(2);
+                        let end = pos.end().saturating_sub(offset);
+                        usize::MIN..end
+                    },
+                },
+                KeeperClusivity::Excluding => match self.cutoff {
+                    KeeperCutoff::After => {
+                        let offset = pos.as_str().chars().count();
+                        let start = pos.start() + offset;
+                        start..usize::MAX
+                    },
+                    KeeperCutoff::Before => usize::MIN..pos.start(),
                 },
             },
         };
@@ -468,6 +555,110 @@ mod tests {
             "karøbα"
                 .to_string()
                 .keep('ø')
+                .before_pattern()
+                .excluding_pattern()
+                .to_string(),
+            "kar"
+        );
+    }
+}
+
+#[cfg(test)]
+#[cfg(feature = "regex")]
+mod regex_feature_tests {
+    use super::prelude::*;
+    use regex::Regex;
+
+    #[test]
+    fn test_keep_after_include_string() {
+        assert_eq!(
+            "this is karøbα it was"
+                .to_string()
+                .keep(Regex::new("karøbα").unwrap())
+                .beginning_of_string() // default
+                .after_pattern() // default
+                .including_pattern() // default
+                .to_string(),
+            "karøbα it was"
+        );
+        assert_eq!(
+            "this is karøbα it was"
+                .to_string()
+                .keep(Regex::new("karøbα").unwrap())
+                .to_string(),
+            "karøbα it was"
+        );
+        assert_eq!(
+            "karøbα"
+                .to_string()
+                .keep(Regex::new("kar").unwrap())
+                .after_pattern()
+                .including_pattern()
+                .to_string(),
+            "karøbα"
+        );
+    }
+
+    #[test]
+    fn test_keep_after_exclude_string() {
+        assert_eq!(
+            "this is karøbα it was"
+                .to_string()
+                .keep(Regex::new("karøbα").unwrap())
+                .beginning_of_string()
+                .after_pattern()
+                .excluding_pattern()
+                .to_string(),
+            " it was"
+        );
+        assert_eq!(
+            "karøbα"
+                .to_string()
+                .keep(Regex::new("kar").unwrap())
+                .after_pattern()
+                .excluding_pattern()
+                .to_string(),
+            "øbα"
+        );
+    }
+
+    #[test]
+    fn test_keep_before_include_string() {
+        assert_eq!(
+            "this is karøbα it was"
+                .to_string()
+                .keep(Regex::new("øbα").unwrap())
+                .before_pattern()
+                .including_pattern()
+                .to_string(),
+            "this is karøbα"
+        );
+        assert_eq!(
+            "karøbα"
+                .to_string()
+                .keep(Regex::new("øbα").unwrap())
+                .before_pattern()
+                .including_pattern()
+                .to_string(),
+            "karøbα"
+        );
+    }
+
+    #[test]
+    fn test_keep_before_exclude_string() {
+        assert_eq!(
+            "this is karøbα it was"
+                .to_string()
+                .keep(Regex::new("øbα").unwrap())
+                .before_pattern()
+                .excluding_pattern()
+                .to_string(),
+            "this is kar"
+        );
+        assert_eq!(
+            "karøbα"
+                .to_string()
+                .keep(Regex::new("øbα").unwrap())
                 .before_pattern()
                 .excluding_pattern()
                 .to_string(),

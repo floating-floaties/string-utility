@@ -1,6 +1,6 @@
 [package]
 name = "string-utility"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 autoexamples = true
 rust-version = "1.64.0"
@@ -15,3 +15,9 @@ exclude = ["Dockerfile", "target", "docker*", "*.lock", ".*"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+regex = { version = "1", optional = true }
+
+[features]
+default = []
+regex = ["dep:regex"]
+
