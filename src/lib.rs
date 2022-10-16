@@ -13,10 +13,12 @@ pub trait SubstringExt {
     fn substring<R: std::ops::RangeBounds<usize>>(&self, range: R) -> String;
     fn substring_len(&self, reverse_count: usize) -> String;
     fn try_substring<R: std::ops::RangeBounds<usize>>(&self, range: R) -> Option<String>;
+    fn trim_trailing_zeros(&self) -> String;
 }
 
 pub trait StringKeeperCommonExt<T, P> {
     fn keep(self, pattern: T) -> StringKeeper<T, P>;
+    fn cut(self, pattern: T) -> StringKeeper<T, P>;
 }
 
 pub trait KeeperCommonExt<T, P> {
@@ -26,6 +28,8 @@ pub trait KeeperCommonExt<T, P> {
     fn excluding_pattern(self) -> StringKeeper<T, P>;
     fn before_pattern(self) -> StringKeeper<T, P>;
     fn after_pattern(self) -> StringKeeper<T, P>;
+    fn until_first_matched_pattern(self, until_pattern: T) -> StringKeeper<T, P>;
+    fn until_no_matched_pattern(self, until_pattern: T) -> StringKeeper<T, P>;
 
     #[cfg(feature = "regex")]
     fn utf8_encoding(self) -> StringKeeper<T, P>;
@@ -39,117 +43,175 @@ pub trait KeeperCommonExt<T, P> {
 
 pub trait StringKeeperExt<T, P>: StringKeeperCommonExt<T, P> {}
 
+#[derive(Clone, Debug, Eq, Ord, PartialOrd, PartialEq)]
 pub enum KeeperPeriod {
     Start,
     End,
 }
 
+#[derive(Clone, Debug, Eq, Ord, PartialOrd, PartialEq)]
 pub enum KeeperCutoff {
     After,
     Before,
 }
 
+#[derive(Clone, Debug, Eq, Ord, PartialOrd, PartialEq)]
 pub enum KeeperClusivity {
     Including,
     Excluding,
 }
 
+#[derive(Clone, Debug, Eq, Ord, PartialOrd, PartialEq)]
 pub enum KeeperEncoding {
     Utf8,
     Utf16,
     // Other(fn(original_text: &str, matched_text: &str, last_char: char) -> usize),
 }
 
-pub struct StringKeeper<T, P> {
-    to_parse: P,
-    pattern: T,
+#[derive(Clone, Debug, Eq, Ord, PartialOrd, PartialEq)]
+pub enum KeeperUntilMatch {
+    FirstMatch,
+    NoMatch,
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialOrd, PartialEq)]
+pub enum StringKeeperMode {
+    Cut,
+    Keep,
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialOrd, PartialEq)]
+pub struct StringKeeperOpts {
+    until_match: Option<KeeperUntilMatch>,
+    mode: StringKeeperMode,
     period: KeeperPeriod,
     clusivity: KeeperClusivity,
     cutoff: KeeperCutoff,
-    encoding: KeeperEncoding,
+    encoding: Option<KeeperEncoding>,
+}
+
+#[derive(Clone, Debug, Eq, Ord, PartialOrd, PartialEq)]
+pub struct StringKeeper<T, P> {
+    to_parse: P,
+    pattern: T,
+    until_pattern: Option<T>,
+    opt: StringKeeperOpts,
 }
 
 impl<T, P> StringKeeperCommonExt<T, P> for P {
     fn keep(self, pattern: T) -> StringKeeper<T, P> {
         StringKeeper {
-            to_parse: self,
-            period: KeeperPeriod::Start,
-            cutoff: KeeperCutoff::After,
-            clusivity: KeeperClusivity::Including,
-            encoding: KeeperEncoding::Utf8,
             pattern,
+            to_parse: self,
+            until_pattern: None,
+            opt: StringKeeperOpts {
+                until_match: None,
+                mode: StringKeeperMode::Keep,
+                period: KeeperPeriod::Start,
+                cutoff: KeeperCutoff::After,
+                clusivity: KeeperClusivity::Including,
+                encoding: None,
+            },
+        }
+    }
+
+    fn cut(self, pattern: T) -> StringKeeper<T, P> {
+        StringKeeper {
+            pattern,
+            to_parse: self,
+            until_pattern: None,
+            opt: StringKeeperOpts {
+                until_match: None,
+                mode: StringKeeperMode::Cut,
+                period: KeeperPeriod::Start,
+                cutoff: KeeperCutoff::After,
+                clusivity: KeeperClusivity::Including,
+                encoding: None,
+            },
         }
     }
 }
 
 impl<T, P> KeeperCommonExt<T, P> for StringKeeper<T, P> {
     fn beginning_of_string(mut self) -> StringKeeper<T, P> {
-        self.period = KeeperPeriod::Start;
+        self.opt.period = KeeperPeriod::Start;
         self
     }
 
     fn end_of_string(mut self) -> StringKeeper<T, P> {
-        self.period = KeeperPeriod::End;
+        self.opt.period = KeeperPeriod::End;
         self
     }
 
     fn including_pattern(mut self) -> StringKeeper<T, P> {
-        self.clusivity = KeeperClusivity::Including;
+        self.opt.clusivity = KeeperClusivity::Including;
         self
     }
 
     fn excluding_pattern(mut self) -> StringKeeper<T, P> {
-        self.clusivity = KeeperClusivity::Excluding;
+        self.opt.clusivity = KeeperClusivity::Excluding;
         self
     }
 
     fn before_pattern(mut self) -> StringKeeper<T, P> {
-        self.cutoff = KeeperCutoff::Before;
+        self.opt.cutoff = KeeperCutoff::Before;
         self
     }
 
     fn after_pattern(mut self) -> StringKeeper<T, P> {
-        self.cutoff = KeeperCutoff::After;
+        self.opt.cutoff = KeeperCutoff::After;
+        self
+    }
+
+    fn until_first_matched_pattern(mut self, until_pattern: T) -> StringKeeper<T, P> {
+        self.until_pattern = Some(until_pattern);
+        self.opt.until_match = Some(KeeperUntilMatch::FirstMatch);
+        self
+    }
+
+    fn until_no_matched_pattern(mut self, until_pattern: T) -> StringKeeper<T, P> {
+        self.until_pattern = Some(until_pattern);
+        self.opt.until_match = Some(KeeperUntilMatch::NoMatch);
         self
     }
 
     #[cfg(feature = "regex")]
     fn utf8_encoding(mut self) -> StringKeeper<T, P> {
-        self.encoding = KeeperEncoding::Utf8;
+        self.opt.encoding = Some(KeeperEncoding::Utf8);
         self
     }
 
     #[cfg(feature = "regex")]
     fn utf16_encoding(mut self) -> StringKeeper<T, P> {
-        self.encoding = KeeperEncoding::Utf16;
+        self.opt.encoding = Some(KeeperEncoding::Utf16);
         self
     }
 
     #[cfg(feature = "regex")]
     fn set_encoding(mut self, enc: KeeperEncoding) -> StringKeeper<T, P> {
-        self.encoding = enc;
+        self.opt.encoding = Some(enc);
         self
     }
 }
 
 impl std::fmt::Display for StringKeeper<String, String> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let try_find = match self.period {
+        let try_find = match self.opt.period {
             KeeperPeriod::Start => self.to_parse.find(&self.pattern),
             KeeperPeriod::End => self.to_parse.rfind(&self.pattern),
         };
 
         let range = match try_find {
             None => usize::MIN..usize::MIN,
-            Some(pos) => match self.clusivity {
-                KeeperClusivity::Including => match self.cutoff {
+            Some(pos) => match self.opt.clusivity {
+                KeeperClusivity::Including => match self.opt.cutoff {
                     KeeperCutoff::After => pos..usize::MAX,
                     KeeperCutoff::Before => {
                         let offset = pos + self.pattern.chars().count();
                         usize::MIN..offset
                     }
                 },
-                KeeperClusivity::Excluding => match self.cutoff {
+                KeeperClusivity::Excluding => match self.opt.cutoff {
                     KeeperCutoff::After => {
                         let offset = pos + self.pattern.chars().count();
                         offset..usize::MAX
@@ -165,26 +227,143 @@ impl std::fmt::Display for StringKeeper<String, String> {
 
 impl std::fmt::Display for StringKeeper<char, String> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let try_find = match self.period {
+        let try_find = match self.opt.period {
             KeeperPeriod::Start => self.to_parse.find(self.pattern),
             KeeperPeriod::End => self.to_parse.rfind(self.pattern),
         };
 
         let range = match try_find {
             None => usize::MIN..usize::MIN,
-            Some(pos) => match self.clusivity {
-                KeeperClusivity::Including => match self.cutoff {
+            Some(pos) => match self.opt.clusivity {
+                KeeperClusivity::Including => match self.opt.cutoff {
                     KeeperCutoff::After => pos..usize::MAX,
                     KeeperCutoff::Before => usize::MIN..(pos).saturating_add(1),
                 },
-                KeeperClusivity::Excluding => match self.cutoff {
+                KeeperClusivity::Excluding => match self.opt.cutoff {
                     KeeperCutoff::After => (pos).saturating_add(1)..usize::MAX,
                     KeeperCutoff::Before => usize::MIN..pos,
                 },
             },
         };
 
-        write!(f, "{}", self.to_parse.substring(range))
+        let mut result = self.to_parse.substring(range);
+
+        let opt_range = if let Some(until_pattern) = self.until_pattern {
+            if let Some(until_match) = self.opt.until_match.clone() {
+                let try_find = match self.opt.period {
+                    KeeperPeriod::Start => result.find(until_pattern),
+                    KeeperPeriod::End => result.rfind(until_pattern),
+                };
+
+                if let Some(pos) = try_find {
+                    match until_match {
+                        KeeperUntilMatch::FirstMatch => {
+                            match self.opt.cutoff {
+                                KeeperCutoff::After => {
+                                    result
+                                        .substring(pos..)
+                                        .find(until_pattern)
+                                        .map(|start_idx| start_idx..usize::MAX)
+                                }
+                                KeeperCutoff::Before => {
+                                    result
+                                        .substring(..=pos)
+                                        .rfind(until_pattern)
+                                        .map(|end_idx| pos..end_idx)
+                                }
+                            }
+                        }
+                        KeeperUntilMatch::NoMatch => {
+                            match self.opt.cutoff {
+                                KeeperCutoff::After => {
+                                    let found = {
+                                        let mut flag = false;
+                                        result
+                                            .chars()
+                                            .enumerate()
+                                            .skip(pos)
+                                            .find(|(c_idx, c)| {
+                                                if *c_idx > pos {
+                                                    let same = *c == until_pattern;
+                                                    if flag && !same {
+                                                        return true;
+                                                    }
+
+                                                    if same {
+                                                        flag = true;
+                                                    }
+                                                }
+
+                                                false
+                                            })
+                                    };
+
+                                    if let Some((start_pos, _)) = found {
+                                        Some(start_pos.saturating_add(1)..pos.saturating_add(1))
+                                    } else {
+                                        None
+                                    }
+                                }
+                                KeeperCutoff::Before => {
+                                    let col = result
+                                        .chars()
+                                        .enumerate()
+                                        .collect::<Vec<(usize, char)>>();
+
+                                    let found = {
+                                        let mut flag = false;
+                                        col
+                                            .iter()
+                                            .rev()
+                                            .find(|(c_idx, c)| {
+                                                if *c_idx <= pos {
+                                                    let same = *c == until_pattern;
+                                                    if flag && !same {
+                                                        return true;
+                                                    }
+
+                                                    if same {
+                                                        flag = true;
+                                                    }
+                                                }
+
+                                                false
+                                            })
+                                    };
+
+                                    if let Some(&(start_pos, _)) = found {
+                                        Some(start_pos.saturating_add(1)..pos.saturating_add(1))
+                                    } else {
+                                        None
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let result = if let Some(range) = opt_range {
+            match self.opt.mode {
+                StringKeeperMode::Cut => {
+                    result.replace_range(range, "");
+                    result
+                }
+                StringKeeperMode::Keep => {
+                    result.substring(range)
+                }
+            }
+        } else {
+            result
+        };
+        write!(f, "{}", result)
     }
 }
 
@@ -192,7 +371,7 @@ impl std::fmt::Display for StringKeeper<char, String> {
 impl std::fmt::Display for StringKeeper<regex::Regex, String> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let to_parse = self.to_parse.as_str();
-        let try_find = match self.period {
+        let try_find = match self.opt.period {
             KeeperPeriod::Start => {
                 self.pattern.find(to_parse)
             }
@@ -203,33 +382,30 @@ impl std::fmt::Display for StringKeeper<regex::Regex, String> {
 
         let range = match try_find {
             None => usize::MIN..usize::MIN,
-            Some(pos) => match self.clusivity {
-                KeeperClusivity::Including => match self.cutoff {
+            Some(pos) => match self.opt.clusivity {
+                KeeperClusivity::Including => match self.opt.cutoff {
                     KeeperCutoff::After => pos.start()..usize::MAX,
                     KeeperCutoff::Before => {
-                        let matched_string = pos.as_str();
-                        let char_len = matched_string
-                            .chars()
-                            .last()
-                            .map(|last_char| {
-                                match self.encoding {
-                                    KeeperEncoding::Utf8 => char::len_utf8(last_char),
-                                    KeeperEncoding::Utf16 => char::len_utf16(last_char),
-                                    // KeeperEncoding::Other(len_of_char) => {
-                                    //     len_of_char(
-                                    //         &*self.to_parse,
-                                    //         matched_string,
-                                    //         last_char,
-                                    //     )
-                                    // }
-                                }
-                            })
-                            .unwrap_or(std::mem::size_of::<char>());
-                        let end = pos.end().saturating_sub(char_len);
-                        usize::MIN..end
+                        let end_offset = if let Some(enc) = self.opt.encoding.clone() {
+                            let matched_string = pos.as_str();
+                            let char_len = matched_string
+                                .chars()
+                                .last()
+                                .map(|last_char| {
+                                    match enc {
+                                        KeeperEncoding::Utf8 => char::len_utf8(last_char),
+                                        KeeperEncoding::Utf16 => char::len_utf16(last_char),
+                                    }
+                                })
+                                .unwrap_or(std::mem::size_of::<char>());
+                            pos.end().saturating_sub(char_len)
+                        } else {
+                            pos.end()
+                        };
+                        usize::MIN..end_offset
                     }
                 },
-                KeeperClusivity::Excluding => match self.cutoff {
+                KeeperClusivity::Excluding => match self.opt.cutoff {
                     KeeperCutoff::After => {
                         let offset = pos.as_str().chars().count();
                         let start = pos.start() + offset;
@@ -279,6 +455,17 @@ impl SubstringExt for str {
         } else {
             None
         }
+    }
+
+    fn trim_trailing_zeros(&self) -> String {
+        self
+            .to_string()
+            .cut('0')
+            .end_of_string()
+            .until_no_matched_pattern('0')
+            .before_pattern()
+            .excluding_pattern()
+            .to_string()
     }
 }
 
@@ -536,6 +723,18 @@ mod tests {
                 .to_string(),
             "kar"
         );
+
+        assert_eq!(
+            "3.141592650991234200000000000000000000"
+                .to_string()
+                .keep('0')
+                .until_no_matched_pattern('0')
+                .beginning_of_string()
+                .before_pattern()
+                .excluding_pattern()
+                .to_string(),
+            "3.14159265"
+        );
     }
 }
 
@@ -604,6 +803,7 @@ mod regex_feature_tests {
             "this is karøbα it was"
                 .to_string()
                 .keep(Regex::new("øbα").unwrap())
+                .utf8_encoding()
                 .before_pattern()
                 .including_pattern()
                 .to_string(),
@@ -617,6 +817,27 @@ mod regex_feature_tests {
                 .including_pattern()
                 .to_string(),
             "karøbα"
+        );
+
+        assert_eq!(
+            "My numbør is 555-0100 and this is some other useless information"
+                .to_string()
+                .keep(Regex::new(r"\d{3}-\d{4}").unwrap())
+                .utf8_encoding()
+                .before_pattern()
+                .including_pattern()
+                .to_string(),
+            "My numbør is 555-0100"
+        );
+
+        assert_eq!(
+            "My number is 555-0100 and this is some other useless information"
+                .to_string()
+                .keep(Regex::new(r"\d{3}-\d{4}").unwrap())
+                .before_pattern()
+                .including_pattern()
+                .to_string(),
+            "My number is 555-0100"
         );
     }
 
@@ -640,5 +861,31 @@ mod regex_feature_tests {
                 .to_string(),
             "kar"
         );
+    }
+}
+
+#[cfg(test)]
+mod pattern_keep_until {
+    use crate::prelude::*;
+
+    #[test]
+    fn to_keep_until_pattern() {
+        assert_eq!(
+            "42.141592650991234200000000000000000000"
+                .to_string()
+                .cut('0')
+                .end_of_string()
+                .until_no_matched_pattern('0')
+                .before_pattern()
+                .excluding_pattern()
+                .to_string(),
+            "42.1415926509912342"
+        );
+
+        assert_eq!(
+            "42.141592650991234200000000000000000000".trim_trailing_zeros(),
+            "42.1415926509912342"
+        );
+
     }
 }
