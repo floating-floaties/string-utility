@@ -1,9 +1,8 @@
 [package]
 name = "string-utility"
 version = "0.2.1"
-edition = "2021"
+edition = "2024"
 autoexamples = true
-rust-version = "1.64.0"
 description = "Provides simple substring implementation (with the RangeBound trait), keep string before or after a specified string, etc."
 readme = "README.md"
 homepage = "https://github.com/floating-floaties/string-utility/"
