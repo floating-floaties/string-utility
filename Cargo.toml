@@ -14,7 +14,7 @@ exclude = ["Dockerfile", "target", "docker*", "*.lock", ".*"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-regex = { version = "1.12.2", optional = true }
+regex = { version = "1.12.3", optional = true }
 
 [features]
 default = []
